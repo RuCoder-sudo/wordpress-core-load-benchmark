@@ -1,47 +1,73 @@
 <?php
-// Измерим время загрузки ядра WordPress
+define('WP_USE_THEMES', false);
+
+/**
+ * Старт таймера ДО загрузки WP
+ */
 $start = microtime(true);
-require_once('wp-load.php');
-$core_load = microtime(true) - $start;
+require_once __DIR__ . '/wp-load.php';
+$load_time = microtime(true) - $start;
 
-echo "<h2>Тест скорости WordPress</h2>";
-echo "Ядро WordPress загрузилось за: " . round($core_load, 3) . " сек<br>";
+global $wpdb, $wp_object_cache;
 
-// Проверим активные плагины
-$active_plugins = get_option('active_plugins');
-echo "Активных плагинов: " . count($active_plugins) . "<br>";
+echo '<h2>WordPress Performance Check</h2>';
 
-// Проверим Redis
-if (class_exists('Redis')) {
-    echo "Redis PHP extension: ✓ Установлен<br>";
-    
-    try {
-        $redis = new Redis();
-        if ($redis->connect('127.0.0.1', 6379)) {
-            echo "Redis соединение: ✓ Работает<br>";
-            echo "Ping: " . $redis->ping() . "<br>";
-        }
-    } catch (Exception $e) {
-        echo "Redis ошибка: " . $e->getMessage() . "<br>";
-    }
+/**
+ * Время загрузки ядра
+ */
+echo '<strong>Load time:</strong> ' . round($load_time, 3) . " sec<br>";
+
+/**
+ * Плагины
+ */
+$active_plugins = (array) get_option('active_plugins', []);
+echo '<strong>Active plugins:</strong> ' . count($active_plugins) . '<br>';
+
+/**
+ * Object Cache
+ */
+echo '<strong>Object cache:</strong> ';
+if (wp_using_ext_object_cache()) {
+    echo '✓ External (' . get_class($wp_object_cache) . ')<br>';
 } else {
-    echo "Redis PHP extension: ✗ Отсутствует<br>";
+    echo '✗ Default WP cache<br>';
 }
 
-// Проверим память
-echo "<h3>Память:</h3>";
-echo "Использовано: " . round(memory_get_usage() / 1024 / 1024, 2) . " MB<br>";
-echo "Пиковое: " . round(memory_get_peak_usage() / 1024 / 1024, 2) . " MB<br>";
-
-// Проверим, какой объектный кэш используется
-global $wp_object_cache;
-if (isset($wp_object_cache) && is_object($wp_object_cache)) {
-    echo "Объектный кэш: " . get_class($wp_object_cache) . "<br>";
+/**
+ * Redis (через Object Cache, а не просто extension)
+ */
+if (class_exists('Redis')) {
+    echo '<strong>Redis PHP extension:</strong> ✓ Installed<br>';
+} else {
+    echo '<strong>Redis PHP extension:</strong> ✗ Not installed<br>';
 }
 
-// Простой тест запросов
-echo "<h3>Простой тест запросов:</h3>";
-$query_start = microtime(true);
-$post_count = wp_count_posts()->publish;
-$query_time = microtime(true) - $query_start;
-echo "Запрос на подсчет постов: " . round($query_time, 4) . " сек (постов: $post_count)<br>"; 
+/**
+ * База данных
+ */
+echo '<h3>Database</h3>';
+echo '<strong>Queries:</strong> ' . get_num_queries() . '<br>';
+echo '<strong>Query time:</strong> ' . round($wpdb->timer_stop(false), 4) . " sec<br>";
+
+/**
+ * Тест запроса
+ */
+$q_start = microtime(true);
+$post_count = wp_count_posts('post')->publish;
+$q_time = microtime(true) - $q_start;
+
+echo '<strong>Post count query:</strong> ' . round($q_time, 4) . " sec ($post_count posts)<br>";
+
+/**
+ * Память
+ */
+echo '<h3>Memory</h3>';
+echo '<strong>Usage:</strong> ' . round(memory_get_usage() / 1024 / 1024, 2) . " MB<br>";
+echo '<strong>Peak:</strong> ' . round(memory_get_peak_usage() / 1024 / 1024, 2) . " MB<br>";
+
+/**
+ * PHP
+ */
+echo '<h3>PHP</h3>';
+echo '<strong>Version:</strong> ' . PHP_VERSION . '<br>';
+echo '<strong>OPcache:</strong> ' . (function_exists('opcache_get_status') && opcache_get_status(false) ? '✓ Enabled' : '✗ Disabled') . '<br>';
